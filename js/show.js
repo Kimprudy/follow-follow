@@ -3,7 +3,7 @@
 window.FF = window.FF || {};
 
 (function () {
-  const { ROUNDS, LOCK_AT, TELEPORT_AT } = FF.clock;
+  const { ROUNDS, LOCK_AT, RESOLVE_AT, TELEPORT_AT } = FF.clock;
   const A = FF.arena;
   const MY_SPEED = 7.5;
   const MIN_REAL_PLAYERS = 4; // fewer real players than this and bots fill the room...
@@ -38,14 +38,15 @@ window.FF = window.FF || {};
 
     // ----- participants -----
 
-    addPerson({ id, name, style, local = false, isMe = false, bot = false }) {
+    addPerson({ id, name, style, local = false, isMe = false, bot = false, speed = MY_SPEED }) {
       const char = FF.character.makeCharacter(style);
       const tag = FF.character.makeNameTag(name || 'Player', { bot, me: isMe });
       char.root.add(tag);
       this.scene.add(char.root);
       const p = {
         id, name, style, bot, isMe, local, char, tag,
-        x: 0, z: 0, tx: 0, tz: 0, ry: 0, moving: false, speed: bot ? 5 + Math.random() * 1.5 : MY_SPEED,
+        // x/z is where we draw them; netX/netZ is where a remote player last said they were.
+        x: 0, z: 0, tx: 0, tz: 0, ry: 0, netX: 0, netZ: 0, moving: false, speed,
         active: false, inShow: false, eliminatedAt: null, rounds: 0, correct: 0, plan: null, zone: -1,
       };
       this.people.set(id, p);
@@ -63,6 +64,42 @@ window.FF = window.FF || {};
 
     get list() {
       return [...this.people.values()];
+    }
+
+    // ----- remote players (live mode) -----
+
+    /** A player from the live room: { id, name, style, x, z, ry, moving }. */
+    addRemote(player) {
+      const id = `r-${player.id}`;
+      if (this.people.has(id)) this.removePerson(id);
+      const p = this.addPerson({ id, name: player.name, style: player.style });
+      p.x = p.netX = Number(player.x) || 0;
+      p.z = p.netZ = Number(player.z) || 0;
+      p.ry = Number(player.ry) || 0;
+      // Joining while a show is on: they watch until the next lobby, like we would.
+      return p;
+    }
+
+    removeRemote(id) {
+      this.removePerson(`r-${id}`);
+    }
+
+    remoteMove(msg) {
+      const p = this.people.get(`r-${msg.id}`);
+      if (!p) return;
+      p.netX = Number(msg.x) || 0;
+      p.netZ = Number(msg.z) || 0;
+      p.ry = Number(msg.ry) || 0;
+      p.moving = !!msg.moving;
+    }
+
+    remoteWave(id) {
+      this.people.get(`r-${id}`)?.char.cheer();
+    }
+
+    /** Where a player counts as standing: our own position, or what a remote player told us. */
+    spotOf(p) {
+      return p.local ? { x: p.x, z: p.z } : { x: p.netX, z: p.netZ };
     }
 
     spotNearMiddle() {
@@ -83,7 +120,7 @@ window.FF = window.FF || {};
       const bots = this.list.filter((p) => p.bot);
       for (let k = bots.length; k < want; k++) {
         const who = FF.bots.botIdentity(showIndex, k);
-        const bot = this.addPerson({ ...who, bot: true, local: true });
+        const bot = this.addPerson({ ...who, bot: true, local: true, speed: who.speed });
         this.teleport(bot, this.spotNearMiddle());
       }
       for (let k = want; k < bots.length; k++) this.removePerson(`bot-${k}`);
@@ -100,7 +137,8 @@ window.FF = window.FF || {};
       const counts = [0, 0, 0, 0];
       for (const p of this.people.values()) {
         if (!p.active) continue;
-        const z = A.zoneOf(p.x, p.z);
+        const spot = this.spotOf(p);
+        const z = A.zoneOf(spot.x, spot.z);
         if (z >= 0) counts[z]++;
       }
       return counts;
@@ -141,8 +179,10 @@ window.FF = window.FF || {};
     /** The lobby ends: everyone on the arena floor is in the show. */
     beginRounds() {
       if (this.state.lateJoin) return;
+      // The bots for this show are settled now, from who's in the room.
+      this.fillBots(this.state.seedIndex);
       for (const p of this.list) {
-        if (!p.local || A.inStands(p.z)) continue;
+        if (A.inStands(this.spotOf(p).z)) continue;
         p.active = true;
         p.inShow = true;
       }
@@ -172,7 +212,8 @@ window.FF = window.FF || {};
       const counts = [0, 0, 0, 0];
       const active = [];
       for (const p of this.list) {
-        p.zone = A.zoneOf(p.x, p.z);
+        const spot = this.spotOf(p);
+        p.zone = A.zoneOf(spot.x, spot.z);
         if (!p.active) continue;
         active.push(p);
         if (p.zone >= 0) counts[p.zone]++;
@@ -247,7 +288,7 @@ window.FF = window.FF || {};
       }
       const st = this.state;
       if (s.round >= 0 && s.round !== st.round) this.startRound(s.round);
-      if (s.round >= 0 && s.rt >= LOCK_AT && !st.resolved.has(s.round)) this.resolve(s.round);
+      if (s.round >= 0 && s.rt >= RESOLVE_AT && !st.resolved.has(s.round)) this.resolve(s.round);
       if (s.round >= 0 && s.rt >= TELEPORT_AT) this.sendOutEliminated(s.round);
       if (s.phase === 'lobby') this.fillBots(st.seedIndex);
 
@@ -258,6 +299,7 @@ window.FF = window.FF || {};
           else if (s.phase === 'question') FF.bots.think(p, s.rt, counts);
         }
         if (p.local) this.step(p, dt, s);
+        else this.follow(p, dt, s);
         p.char.root.position.set(p.x, 0, p.z);
         p.char.root.rotation.y = p.ry;
         p.char.update(dt, p.moving);
@@ -268,7 +310,7 @@ window.FF = window.FF || {};
 
     /** Walks a local player (me or a bot) toward their target. Frozen while the corners are locked. */
     step(p, dt, s) {
-      const locked = s.phase === 'reveal' && s.rt < TELEPORT_AT && p.active;
+      const locked = s.round >= 0 && s.rt >= LOCK_AT && s.rt < TELEPORT_AT && p.active;
       const dx = p.tx - p.x;
       const dz = p.tz - p.z;
       const dist = Math.hypot(dx, dz);
@@ -280,6 +322,30 @@ window.FF = window.FF || {};
         p.ry = Math.atan2(dx, dz);
       }
       A.clamp(p, A.inStands(p.z));
+    }
+
+    /** Glides a remote player toward where they said they are; jumps on a teleport. */
+    follow(p, dt, s) {
+      const dx = p.netX - p.x;
+      const dz = p.netZ - p.z;
+      if (Math.hypot(dx, dz) > 8) {
+        p.x = p.netX;
+        p.z = p.netZ;
+      } else {
+        const k = Math.min(1, dt * 10);
+        p.x += dx * k;
+        p.z += dz * k;
+      }
+      // We're spectating a show already under way: count whoever's on the floor as still in.
+      if (this.state.lateJoin && s.phase !== 'lobby' && p.eliminatedAt === null && !A.inStands(p.netZ)) {
+        p.active = true;
+        p.inShow = true;
+      }
+      // They went to the stands on their own screen, so they're out: everyone agrees.
+      if (p.active && s.phase !== 'lobby' && A.inStands(p.netZ)) {
+        p.active = false;
+        p.eliminatedAt ??= Math.max(0, this.state.round);
+      }
     }
 
     /** Sets my walking target, kept to where I'm allowed to be. */

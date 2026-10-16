@@ -8,11 +8,13 @@ window.FF = window.FF || {};
 
   const seed = (...parts) => parts.reduce((h, p) => Math.imul(h ^ p, 2654435761) >>> 0, 0x9e3779b9);
 
-  /** The k-th bot of a show: { id, name, style }. */
+  const SPEED = 6.5; // m/s: the same on every screen, so bots reach their corners at the same time
+
+  /** The k-th bot of a show: { id, name, style, speed }. */
   function botIdentity(showIndex, k) {
     const rand = FF.clock.mulberry32(seed(showIndex, k, 7));
     const start = Math.floor(FF.clock.mulberry32(seed(showIndex, 99))() * NAMES.length);
-    return { id: `bot-${k}`, name: NAMES[(start + k * 7) % NAMES.length], style: FF.character.randomStyle(rand) };
+    return { id: `bot-${k}`, name: NAMES[(start + k * 7) % NAMES.length], style: FF.character.randomStyle(rand), speed: SPEED };
   }
 
   /** What a bot will do this round. Pure: depends only on the show, round and bot. */
@@ -24,7 +26,8 @@ window.FF = window.FF || {};
       corner = rand() < ACCURACY ? question.answer : wrong[Math.floor(rand() * 3)];
     }
     const decideAt = FF.clock.READY_END + 300 + rand() * 3500;
-    const herdAt = Math.min(FF.clock.LOCK_AT - 1200, decideAt + 2000 + rand() * 5000);
+    // Late enough to see the crowd, early enough to cross the arena before the lock.
+    const herdAt = Math.min(FF.clock.LOCK_AT - 5000, decideAt + 1500 + rand() * 4000);
     const herds = rand() < 0.25 + rand() * 0.4; // drifts to the busiest corner after a while
     return { corner, decideAt, herdAt, herds, decided: false, herded: false, rand };
   }

@@ -11,7 +11,8 @@ window.FF = window.FF || {};
 
   // Round timeline (ms into the round).
   const READY_END = 2000; // get ready + category
-  const LOCK_AT = 14000; // corners lock
+  const LOCK_AT = 14000; // corners lock: players in the show stop moving
+  const RESOLVE_AT = 14600; // results are worked out once everyone's final position has arrived
   const TELEPORT_AT = 15500; // eliminated players go to the stands
   const REVEAL_END = 17000; // then results until ROUND_MS
 
@@ -106,6 +107,7 @@ window.FF = window.FF || {};
     EPOCH,
     READY_END,
     LOCK_AT,
+    RESOLVE_AT,
     TELEPORT_AT,
     REVEAL_END,
     mulberry32,

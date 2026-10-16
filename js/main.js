@@ -166,19 +166,88 @@
     frame();
     $('bottom').hidden = false;
     $('corners').hidden = false;
+    if (mode === 'live') joinRoom();
   }
 
   function leave() {
+    room?.stop();
+    room = null;
     if (runner) runner.dispose();
     runner = null;
     banner(null);
-    for (const id of ['hud', 'corners', 'bottom', 'lobby', 'results', 'board']) $(id).hidden = true;
+    for (const id of ['hud', 'corners', 'bottom', 'lobby', 'results', 'board', 'net']) $(id).hidden = true;
     $('title').hidden = false;
     if (preview) preview.root.visible = true;
     world.setPads(['idle', 'idle', 'idle', 'idle']);
     marker.visible = false;
     cam.mode = 'title';
     frame();
+  }
+
+  // ----- the live room -----
+
+  let room = null;
+  let myNetId = null;
+  const NET_TEXT = {
+    connecting: 'Joining the live room…',
+    retrying: 'Reconnecting… playing on with bots',
+    full: 'The live room is full. Playing with bots, and trying again…',
+    signin: 'Sign in to start.ng to play live.',
+    'other-tab': "You're playing Follow Follow in another tab.",
+  };
+
+  function joinRoom() {
+    myNetId = null;
+    room = new FF.LiveRoom({
+      onMessage(msg) {
+        if (!runner) return;
+        if (msg.type === 'welcome') {
+          myNetId = msg.you;
+          for (const p of runner.list) if (!p.local) runner.removePerson(p.id);
+          for (const p of msg.players || []) if (p.id !== myNetId) runner.addRemote(p);
+          sendMove(true);
+        } else if (msg.type === 'join') {
+          if (msg.player && msg.player.id !== myNetId) runner.addRemote(msg.player);
+        } else if (msg.type === 'move') {
+          if (msg.id !== myNetId) runner.remoteMove(msg);
+        } else if (msg.type === 'wave') {
+          if (msg.id !== myNetId) runner.remoteWave(msg.id);
+        } else if (msg.type === 'leave') {
+          runner.removeRemote(msg.id);
+        }
+      },
+      onStatus(state) {
+        const box = $('net');
+        if (state === 'online') {
+          box.hidden = true;
+          return;
+        }
+        $('net-text').textContent = NET_TEXT[state] || '';
+        const action = $('net-action');
+        action.hidden = state !== 'signin' && state !== 'other-tab';
+        action.textContent = state === 'signin' ? 'Sign in' : 'Play here';
+        action.onclick = () => (state === 'signin' ? P.signIn() : room?.rejoin());
+        box.hidden = false;
+      },
+    });
+    room.connect();
+  }
+
+  // My position goes out about 10 times a second while I move, and once a second when I don't,
+  // so newcomers and the corner lock always have a fresh position.
+  let lastSent = 0;
+  let lastSentKey = '';
+  function sendMove(force) {
+    if (!room?.online || !runner) return;
+    const me = runner.me;
+    const now = performance.now();
+    const msg = { type: 'move', x: +me.x.toFixed(2), z: +me.z.toFixed(2), ry: +me.ry.toFixed(2), moving: me.moving };
+    const key = `${msg.x},${msg.z},${msg.moving}`;
+    const changed = key !== lastSentKey;
+    if (!force && now - lastSent < (changed ? 100 : 1000)) return;
+    room.send(msg);
+    lastSent = now;
+    lastSentKey = key;
   }
 
   $('practice').onclick = () => start('practice');
@@ -375,6 +444,7 @@
     if (!runner || performance.now() - lastCheer < 1000) return;
     lastCheer = performance.now();
     runner.me.char.cheer();
+    room?.send({ type: 'wave' });
   }
   $('cheer').onclick = cheer;
 
@@ -492,6 +562,7 @@
     if (runner) {
       steerWithKeys();
       const s = runner.update(dt);
+      sendMove(false);
       updateHud(s);
     } else if (preview) {
       preview.root.rotation.y = Math.sin(t / 1600) * 0.5;
