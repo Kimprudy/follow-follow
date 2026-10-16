@@ -1,0 +1,9 @@
+{
+  "leaderboard": {
+    "stats": [
+      { "key": "rounds", "label": "Rounds survived", "order": "highest" },
+      { "key": "correct", "label": "Correct answers", "order": "highest" },
+      { "key": "outlasted", "label": "Players outlasted", "order": "highest" }
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Follow Follow cover</title>
+  <!-- Rendered at 1600×1000 by tools/make-cover.mjs to make cover.png. -->
+  <style>
+    html, body { margin: 0; width: 1600px; height: 1000px; overflow: hidden; background: #2a0f45; }
+    canvas { display: block; }
+    .title {
+      position: absolute; left: 0; right: 0; top: 46px; text-align: center;
+      font-family: "Arial Black", "Trebuchet MS", sans-serif; font-size: 150px; line-height: 0.92; letter-spacing: 2px;
+      color: #ffb703; text-shadow: 7px 7px 0 #ff4d6d, 14px 14px 0 rgba(0, 0, 0, 0.3);
+    }
+    .title span { color: #06d6a0; text-shadow: 7px 7px 0 #4cc9f0, 14px 14px 0 rgba(0, 0, 0, 0.3); }
+    .sub {
+      position: absolute; left: 0; right: 0; bottom: 40px; text-align: center;
+      font: 800 40px "Trebuchet MS", sans-serif; color: #fffefa; text-shadow: 0 3px 12px rgba(0, 0, 0, 0.8);
+    }
+  </style>
+</head>
+<body>
+  <div class="title">FOLLOW <span>FOLLOW</span></div>
+  <div class="sub">Answer with your feet · trust yourself or follow the crowd</div>
+  <script src="../vendor/three.min.js"></script>
+  <script src="../js/clock.js"></script>
+  <script src="../js/character.js"></script>
+  <script src="../js/arena.js"></script>
+  <script>
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(1600, 1000);
+    document.body.prepend(renderer.domElement);
+    const world = FF.arena.build();
+    const scene = world.scene;
+    world.setPads(['win', 'win', 'win', 'win']);
+    world.tick(0.3);
+
+    // Characters racing from the middle toward the four corners.
+    const rand = FF.clock.mulberry32(2026);
+    for (let k = 0; k < 18; k++) {
+      const corner = k % 4;
+      const goal = FF.arena.cornerCenter(corner);
+      const t = 0.35 + rand() * 0.55; // how far along they are
+      const x = goal.x * t + (rand() - 0.5) * 4;
+      const z = goal.z * t + (rand() - 0.5) * 4;
+      const c = FF.character.makeCharacter(FF.character.randomStyle(rand));
+      c.root.position.set(x, 0, z);
+      c.root.rotation.y = Math.atan2(goal.x - x, goal.z - z);
+      for (let i = 0; i < 3 + k; i++) c.update(0.05, true); // mid-stride
+      scene.add(c.root);
+    }
+
+    const camera = new THREE.PerspectiveCamera(42, 1.6, 0.5, 300);
+    camera.position.set(0, 44, 46);
+    camera.lookAt(0, 0, 3);
+    scene.fog.near = 80;
+    scene.fog.far = 170;
+    renderer.render(scene, camera);
+    document.body.dataset.ready = '1';
+  </script>
+</body>
+</html>

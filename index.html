@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2a0f45">
+  <title>Follow Follow · start.ng</title>
+  <meta name="description" content="A live multiplayer quiz where you answer with your feet. Run your start.ng character to a corner: trust yourself or follow the crowd.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="scene" aria-label="The Follow Follow arena"></canvas>
+
+  <!-- start.ng profile card -->
+  <div class="card" id="player-card">
+    <span class="face" id="player-face" aria-hidden="true"></span>
+    <div class="who">
+      <b id="player-name">Guest</b>
+      <span id="player-account">Not signed in</span>
+    </div>
+    <button class="chip" id="player-sign-in" hidden>Sign in</button>
+  </div>
+
+  <!-- Round HUD -->
+  <div class="hud" id="hud" hidden>
+    <div class="round-row">
+      <span class="pill" id="round-label">Round 1/10</span>
+      <span class="pill type" id="type-label">Fact</span>
+      <span class="pill" id="alive-label"></span>
+    </div>
+    <div class="question" id="question-card" hidden>
+      <div class="category" id="category"></div>
+      <div class="q" id="question-text"></div>
+      <div class="timer"><span id="timer-fill"></span></div>
+    </div>
+  </div>
+  <div class="corners" id="corners" hidden></div>
+  <div class="banner" id="banner" hidden></div>
+
+  <div class="bottom" id="bottom" hidden>
+    <span class="status" id="status"></span>
+    <button class="btn small ghost" id="leave">Menu</button>
+    <button class="btn cheer" id="cheer" title="Cheer (Space)">🎉 Cheer</button>
+  </div>
+
+  <!-- Title screen -->
+  <div class="overlay" id="title">
+    <div class="panel title-panel">
+      <h1 class="logo">FOLLOW<br><span>FOLLOW</span></h1>
+      <p class="tagline">Answer with your feet. Trust yourself, or follow the crowd.</p>
+      <div class="buttons">
+        <button class="btn primary" id="play-live">Play Live</button>
+        <button class="btn" id="practice">Practice with bots</button>
+        <button class="btn ghost" id="open-board">Leaderboard</button>
+      </div>
+      <p class="note" id="live-note"></p>
+      <details class="how">
+        <summary>How to play</summary>
+        <ul>
+          <li>A question appears. The 4 corners are <b>A</b>, <b>B</b>, <b>C</b> and <b>D</b>.</li>
+          <li><b>Tap</b> or <b>click</b> where to walk, or use <b>WASD</b> / arrow keys.</li>
+          <li><b>Fact</b> rounds: be in the right corner. <b>Majority</b>: the biggest crowd survives. <b>Minority</b>: the smallest crowd survives.</li>
+          <li>Wrong corner (or no corner) and you're off to the stands. Keep answering from the stands for points.</li>
+          <li>Last ones standing win the show.</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+
+  <!-- Lobby -->
+  <div class="lobby" id="lobby" hidden>
+    <div class="big" id="lobby-count">40</div>
+    <div class="lobby-text" id="lobby-text">Next show starts soon. Stand in the arena to play!</div>
+  </div>
+
+  <!-- Show results -->
+  <div class="overlay" id="results" hidden>
+    <div class="panel">
+      <h2 id="results-title">Show over!</h2>
+      <p id="results-winners"></p>
+      <div class="stats">
+        <div><b id="stat-rounds">0</b><span>Rounds survived</span></div>
+        <div><b id="stat-correct">0</b><span>Correct answers</span></div>
+        <div><b id="stat-outlasted">0</b><span>Players outlasted</span></div>
+      </div>
+      <p class="note" id="results-saved"></p>
+      <ol class="board" id="results-board"></ol>
+      <div class="buttons row">
+        <button class="btn primary" id="results-next">Next show</button>
+        <button class="btn ghost" id="results-menu">Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="overlay" id="board" hidden>
+    <div class="panel">
+      <h2>Leaderboard</h2>
+      <p class="note">Ranked by rounds survived, then correct answers, then players outlasted.</p>
+      <ol class="board" id="board-list"></ol>
+      <div class="buttons row">
+        <button class="btn primary" id="board-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/platform.js"></script>
+  <script src="js/clock.js"></script>
+  <script src="js/character.js"></script>
+  <script src="js/arena.js"></script>
+  <script src="js/bots.js"></script>
+  <script src="js/show.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
