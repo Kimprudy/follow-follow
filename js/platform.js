@@ -6,6 +6,54 @@ window.FF = window.FF || {};
   // start.ng only answers games served from *.start.ng. Anywhere else (a local file,
   // a dev server) there is no start.ng, so the game runs as a guest in practice mode.
   const START_NG = location.hostname.endsWith('.start.ng') ? 'https://start.ng' : null;
+  const API = 'https://api.start.ng';
+  const GAME = location.hostname.split('.')[0];
+
+  // After signing in, start.ng sends players back with a game session in the address. Phone
+  // browsers often hide start.ng's sign-in from the hidden connect frame, so we keep the session
+  // and use the HTTP API whenever the connect page doesn't know the player.
+  const SESSION_KEY = 'startng_session';
+  let freshSession = null;
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get(SESSION_KEY)) {
+    try {
+      sessionStorage.setItem(SESSION_KEY, params.get(SESSION_KEY));
+    } catch {
+      // Storage blocked: the session still works for this page load.
+    }
+    freshSession = params.get(SESSION_KEY);
+    history.replaceState(null, '', location.pathname + location.search); // remove it from the address bar
+  }
+  function session() {
+    try {
+      return sessionStorage.getItem(SESSION_KEY) || freshSession || null;
+    } catch {
+      return freshSession || null;
+    }
+  }
+  function dropSession() {
+    freshSession = null;
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      // nothing to drop
+    }
+  }
+
+  /** Calls the start.ng API with the game session. Resolves to { status, body }. */
+  async function api(path, { method = 'GET', body } = {}) {
+    const headers = {};
+    const s = session();
+    if (s) headers.Authorization = `Bearer ${s}`;
+    if (body) headers['Content-Type'] = 'application/json';
+    try {
+      const res = await fetch(`${API}/games/${GAME}${path}`, { method, headers, body: body && JSON.stringify(body) });
+      if (res.status === 401) dropSession();
+      return { status: res.status, body: await res.json().catch(() => null) };
+    } catch {
+      return { status: 0, body: null };
+    }
+  }
 
   // Shown for guests when start.ng can't tell us its guest look (e.g. opened as a local file).
   const GUEST_STYLE = {
@@ -62,7 +110,14 @@ window.FF = window.FF || {};
   async function whoami() {
     const reply = await ask({ type: 'startng:whoami' }, 'startng:user');
     const guest = reply?.guest ?? { name: 'Guest', style: GUEST_STYLE, face: null };
-    return { user: reply?.user ?? null, guest, signedIn: !!reply?.user, online: !!reply };
+    let user = reply?.user ?? null;
+    if (!user && START_NG && session()) {
+      const res = await api('/player');
+      if (res.status === 200 && res.body?.id) {
+        user = { id: res.body.id, name: res.body.name, account: null, style: res.body.style, face: null };
+      }
+    }
+    return { user, guest, signedIn: !!user, online: !!reply || !!user };
   }
 
   /** Calls fn(whoamiResult) when the player comes back to this tab: they may have signed in or out. */
@@ -88,20 +143,33 @@ window.FF = window.FF || {};
       clean[key] = Math.max(0, Math.min(1e9, Math.round(stats[key] || 0)));
     }
     const reply = await ask({ type: 'startng:score', stats: clean }, 'startng:scoreSaved', 8000);
-    return reply ?? { ok: false, error: 'start.ng did not answer' };
+    if (reply?.ok || !session()) return reply ?? { ok: false, error: 'start.ng did not answer' };
+    const res = await api('/scores', { method: 'POST', body: { stats: clean } });
+    if (res.status === 200) return { ok: true, result: res.body };
+    return { ok: false, error: res.status === 401 ? 'Sign in again to save your score' : res.body?.detail || 'Could not save' };
   }
 
   /** The top players, or null when start.ng isn't reachable. */
   async function leaderboard(limit = 10) {
     const reply = await ask({ type: 'startng:leaderboard', limit }, 'startng:leaderboardData', 8000);
-    return reply?.ok ? reply.entries : null;
+    if (reply?.ok) return reply.entries;
+    if (!START_NG) return null;
+    const res = await api(`/leaderboard?limit=${limit}`);
+    return res.status === 200 && Array.isArray(res.body) ? res.body : null;
   }
 
   /** A one-minute ticket into the live room: { ticket, url }, { error }, or null if no answer. */
   async function liveTicket() {
     const reply = await ask({ type: 'startng:ticket' }, 'startng:ticketData', 8000);
+    if (reply?.ok) return { ticket: reply.ticket, url: reply.url };
+    if (session()) {
+      const res = await api('/ticket', { method: 'POST' });
+      if (res.status === 200 && res.body?.ticket) {
+        return { ticket: res.body.ticket, url: res.body.url || `wss://api.start.ng/games/${GAME}/live` };
+      }
+    }
     if (!reply) return null;
-    return reply.ok ? { ticket: reply.ticket, url: reply.url } : { error: reply.error || 'no ticket' };
+    return { error: reply.error || 'no ticket' };
   }
 
   FF.platform = {
